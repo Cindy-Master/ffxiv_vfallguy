@@ -9,6 +9,10 @@ using System.Numerics;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using System.Text.RegularExpressions;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace vfallguy;
 
@@ -33,33 +37,61 @@ public class MainWindow : Window, IDisposable
     private float _autoJoinDelay = 0.5f;
     private float _autoLeaveDelay = 3;
     private int _autoLeaveLimit = 1;
-    private bool _autoFarmingMode; 
+    private bool _autoFarmingMode;
+    private string _webSocketUrl = "";
+    private int _webSocketPort;
+    private string _qqPrivateChatNumber = "";
+    private string _qqBotNumber = "";
+    private string _gameName = "";
+    private HttpClient _httpClient = new HttpClient();
+    private int _battlePlayerCount = 1;
+    private bool _enableQQBotConfig = false;
 
-    public MainWindow() : base("vfailguy改 by:Master 闲鱼司马")
+
+
+
+    public MainWindow() : base("vfailguy改 by:Cindy-Master 闲鱼司马")
     {
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Apifox/1.0.0 (https://apifox.com)");
+        _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         ShowCloseButton = false;
         RespectCloseHotkey = false;
         Service.ChatGui.ChatMessage += OnChatMessage;
     }
+
 private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender, ref SeString message, ref bool isHandled)
 {
-
     if (!_autoFarmingMode) return;
 
+    // 检测"获得了金碟声誉"的消息并执行自动刷币
     var match = Regex.Match(message.TextValue, @"获得了(\d+)个金碟声誉。");
     if (match.Success)
     {
         PerformAutoFarming();
     }
+
+    // 新增检测“节目马上就要开始了”这句话
+    if (Regex.IsMatch(message.TextValue, @"节目马上就要开始了"))
+    {
+        // 检查人数是否满足条件
+        if (_numPlayersInDuty <= _battlePlayerCount)
+        {
+            // 发送QQ消息
+            SendMessageToQQ($"当前为{_numPlayersInDuty}人对局");
+        }
+    }
 }
+
     public void Dispose()
-    {   
+    {
         Service.ChatGui.ChatMessage -= OnChatMessage;
         _map?.Dispose();
         _gameEvents.Dispose();
         _automation.Dispose();
-        
+
     }
+
+
 
     public unsafe override void PreOpenCheck()
     {
@@ -72,6 +104,8 @@ private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender,
         _prevPos = playerPos;
         _movementSpeed = _movementDirection.Length() / Framework.Instance()->FrameDeltaTime;
         _movementDirection = _movementDirection.NormalizedXZ();
+
+        
 
         IsOpen = Service.ClientState.TerritoryType is 1165 or 1197;
 
@@ -95,7 +129,7 @@ private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender,
         ImGui.SameLine();
         ImGui.TextUnformatted($"Num players in duty: {_numPlayersInDuty} (autoleave: {(_autoLeaveAt == DateTime.MaxValue ? "never" : $"in {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
         ImGui.Checkbox("挂机刷币模式(请同时勾选自动排本)", ref _autoFarmingMode);
-        ImGui.Checkbox("自动排本(需要在NPC旁边)", ref  _autoJoin);
+        ImGui.Checkbox("自动排本(需要在NPC旁边)", ref _autoJoin);
         if (_autoJoin)
         {
             using (ImRaii.PushIndent())
@@ -116,6 +150,31 @@ private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender,
         ImGui.Checkbox("AOE时间", ref _showAOEText);
         ImGui.Checkbox("推荐路线", ref _showPathfind);
 
+
+        ImGui.Checkbox("启用QQ机器人配置", ref _enableQQBotConfig);
+
+
+        if (_enableQQBotConfig)
+        {
+            ImGui.Text("QQ机器人配置:");
+            ImGui.InputText("本账号名称", ref _gameName, 255);
+            ImGui.InputText("私聊的QQ号", ref _qqPrivateChatNumber, 255);
+            ImGui.InputText("BotQQ号", ref _qqBotNumber, 255);
+            ImGui.InputText("WebSocket URL", ref _webSocketUrl, 255);
+            ImGui.InputInt("端口号", ref _webSocketPort);
+            ImGui.SliderInt("战局人数通知(小于等于这个值都会提醒)", ref _battlePlayerCount, 1, 24, "%d人战局");
+
+            if (ImGui.Button("应用"))
+            {
+                SendMessageToQQ("机器人已成功连接\n" +
+                                $"本账号名称: {_gameName}\n" +
+                                $"通知QQ私聊号码: {_qqPrivateChatNumber}\n");
+                
+            }
+        }
+
+
+
         if (_map != null)
         {
             var strats = _map.Strats();
@@ -133,6 +192,34 @@ private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender,
             }*/
         }
     }
+    private async void SendMessageToQQ(string message)
+    {
+        long qqPrivateChatNumberLong = Convert.ToInt64(_qqPrivateChatNumber);
+        long qqBotNumberLong = Convert.ToInt64(_qqBotNumber);
+        string requestUrl = $"{_webSocketUrl}:{_webSocketPort}/v1/LuaApiCaller?funcname=MagicCgiCmd&timeout=35&qq={qqBotNumberLong}";
+        var postData = new
+        {
+            CgiCmd = "MessageSvc.PbSendMsg",
+            CgiRequest = new
+            {
+                ToUin = qqPrivateChatNumberLong,
+                ToType = 1,
+                Content = message
+            }
+        };
+
+        var content = new StringContent(JsonConvert.SerializeObject(postData), Encoding.UTF8, "application/json");
+        try
+        {
+            var response = await _httpClient.PostAsync(requestUrl, content);
+            var responseString = await response.Content.ReadAsStringAsync();
+
+        }
+        catch (HttpRequestException e)
+        {
+        }
+    }
+
 
     private void UpdateMap()
     {
@@ -168,13 +255,13 @@ private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender,
 
         _map?.Update();
     }
-        private void PerformAutoFarming()
+    private void PerformAutoFarming()
 
-        {
+    {
 
         _automation.LeaveDuty();
 
-        }
+    }
 
     private void UpdateAutoJoin()
     {
