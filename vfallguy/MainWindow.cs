@@ -1,4 +1,4 @@
-﻿using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -6,6 +6,9 @@ using ImGuiNET;
 using System;
 using System.Linq;
 using System.Numerics;
+using Dalamud.Game.Text;
+using Dalamud.Game.Text.SeStringHandling;
+using System.Text.RegularExpressions;
 
 namespace vfallguy;
 
@@ -30,18 +33,32 @@ public class MainWindow : Window, IDisposable
     private float _autoJoinDelay = 0.5f;
     private float _autoLeaveDelay = 3;
     private int _autoLeaveLimit = 1;
+    private bool _autoFarmingMode; 
 
-    public MainWindow() : base("vfailguy")
+    public MainWindow() : base("vfailguy改 by:Master 闲鱼司马")
     {
         ShowCloseButton = false;
         RespectCloseHotkey = false;
+        Service.ChatGui.ChatMessage += OnChatMessage;
     }
+private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender, ref SeString message, ref bool isHandled)
+{
 
-    public void Dispose()
+    if (!_autoFarmingMode) return;
+
+    var match = Regex.Match(message.TextValue, @"获得了(\d+)个金碟声誉。");
+    if (match.Success)
     {
+        PerformAutoFarming();
+    }
+}
+    public void Dispose()
+    {   
+        Service.ChatGui.ChatMessage -= OnChatMessage;
         _map?.Dispose();
         _gameEvents.Dispose();
         _automation.Dispose();
+        
     }
 
     public unsafe override void PreOpenCheck()
@@ -64,19 +81,21 @@ public class MainWindow : Window, IDisposable
         DrawOverlays();
 
         _drawer.DrawWorldPrimitives();
+
+
     }
 
     public unsafe override void Draw()
     {
-        if (ImGui.Button("Queue"))
+        if (ImGui.Button("进本"))
             _automation.RegisterForDuty();
         ImGui.SameLine();
-        if (ImGui.Button("Leave"))
+        if (ImGui.Button("退本"))
             _automation.LeaveDuty();
         ImGui.SameLine();
         ImGui.TextUnformatted($"Num players in duty: {_numPlayersInDuty} (autoleave: {(_autoLeaveAt == DateTime.MaxValue ? "never" : $"in {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
-
-        ImGui.Checkbox("Auto register", ref  _autoJoin);
+        ImGui.Checkbox("挂机刷币模式(请同时勾选自动排本)", ref _autoFarmingMode);
+        ImGui.Checkbox("自动排本(需要在NPC旁边)", ref  _autoJoin);
         if (_autoJoin)
         {
             using (ImRaii.PushIndent())
@@ -84,7 +103,7 @@ public class MainWindow : Window, IDisposable
                 ImGui.SliderFloat("Delay###j", ref _autoJoinDelay, 0, 10);
             }
         }
-        ImGui.Checkbox("Auto leave if not solo", ref _autoLeaveIfNotSolo);
+        ImGui.Checkbox("如果非单人自动退本", ref _autoLeaveIfNotSolo);
         if (_autoLeaveIfNotSolo)
         {
             using (ImRaii.PushIndent())
@@ -93,9 +112,9 @@ public class MainWindow : Window, IDisposable
                 ImGui.SliderInt("Limit", ref _autoLeaveLimit, 1, 23);
             }
         }
-        ImGui.Checkbox("Show AOE zones", ref _showAOEs);
-        ImGui.Checkbox("Show AOE debug text", ref _showAOEText);
-        ImGui.Checkbox("Show proposed path", ref _showPathfind);
+        ImGui.Checkbox("AOE范围", ref _showAOEs);
+        ImGui.Checkbox("AOE时间", ref _showAOEText);
+        ImGui.Checkbox("推荐路线", ref _showPathfind);
 
         if (_map != null)
         {
@@ -106,12 +125,12 @@ public class MainWindow : Window, IDisposable
             ImGui.TextUnformatted($"Path: {_map.PathSkip}-{_map.Path.Count}");
             ImGui.TextUnformatted($"Speed: {_movementSpeed}");
 
-            //foreach (var aoe in _map.AOEs.Where(aoe => aoe.NextActivation != default))
-            //{
-            //    var nextActivation = (aoe.NextActivation - _now).TotalSeconds;
-            //    using (ImRaii.PushColor(ImGuiCol.Text, nextActivation < 0 ? 0xff0000ff : 0xffffffff))
-            //        ImGui.TextUnformatted($"{aoe.Type} R{aoe.R1} @ {aoe.Origin}: activate in {nextActivation:f3}, repeat={aoe.Repeat}, seqd={aoe.SeqDelay}");
-            //}
+            /*foreach (var aoe in _map.AOEs.Where(aoe => aoe.NextActivation != default))
+            {
+                var nextActivation = (aoe.NextActivation - _now).TotalSeconds;
+                using (ImRaii.PushColor(ImGuiCol.Text, nextActivation < 0 ? 0xff0000ff : 0xffffffff))
+                    ImGui.TextUnformatted($"{aoe.Type} R{aoe.R1} @ {aoe.Origin}: activate in {nextActivation:f3}, repeat={aoe.Repeat}, seqd={aoe.SeqDelay}");
+            }*/
         }
     }
 
@@ -149,6 +168,13 @@ public class MainWindow : Window, IDisposable
 
         _map?.Update();
     }
+        private void PerformAutoFarming()
+
+        {
+
+        _automation.LeaveDuty();
+
+        }
 
     private void UpdateAutoJoin()
     {
