@@ -1,4 +1,4 @@
-﻿using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -13,6 +13,9 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Dalamud.Plugin;
+
+
 
 namespace vfallguy;
 
@@ -38,6 +41,7 @@ public class MainWindow : Window, IDisposable
     private float _autoLeaveDelay = 3;
     private int _autoLeaveLimit = 1;
     private bool _autoFarmingMode;
+    private bool _autoWinLeave;
     private string _webSocketUrl = "";
     private int _webSocketPort;
     private string _qqPrivateChatNumber = "";
@@ -48,22 +52,36 @@ public class MainWindow : Window, IDisposable
     private bool _enableQQBotConfig = false;
     private bool _showDebugWindow = false;
     private string _debugMessages = "";
+    private BotConfiguration config;
 
 
 
 
-    public MainWindow() : base("vfailguy改 by:Cindy-Master 闲鱼司马")
+
+    public MainWindow(DalamudPluginInterface pluginInterface) : base("vfailguy改 by:Cindy-Master 闲鱼司马")
     {
+        config = new BotConfiguration();
+        config.Initialize(pluginInterface);
+        LoadConfig();
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Apifox/1.0.0 (https://apifox.com)");
         _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         ShowCloseButton = false;
         RespectCloseHotkey = false;
         Service.ChatGui.ChatMessage += OnChatMessage;
     }
+    private void LoadConfig()
+    {
+        _gameName = config.GameName;
+        _qqPrivateChatNumber = config.QqPrivateChatNumber;
+        _qqBotNumber = config.QqBotNumber;
+        _webSocketUrl = config.WebSocketUrl;
+        _webSocketPort = config.WebSocketPort;
+        _battlePlayerCount = config.BattlePlayerCount;
+    }
 
     private bool IsConfigComplete()
     {
-        // 检查所有必要的配置项是否已经填写
+
         return !string.IsNullOrWhiteSpace(_webSocketUrl) &&
                _webSocketPort != 0 &&
                !string.IsNullOrWhiteSpace(_qqPrivateChatNumber) &&
@@ -73,25 +91,37 @@ public class MainWindow : Window, IDisposable
 
     private void OnChatMessage(XivChatType type, uint senderId, ref SeString sender, ref SeString message, ref bool isHandled)
     {
-        if (!_autoFarmingMode) return;
 
-        // 检测"获得了金碟声誉"的消息并执行自动刷币
-        var match = Regex.Match(message.TextValue, @"获得了(\d+)个金碟声誉。");
-        if (match.Success)
-        {
-            PerformAutoFarming();
-        }
-
-        // 新增检测“节目马上就要开始了”这句话
         if (Regex.IsMatch(message.TextValue, @"节目马上就要开始了"))
         {
-            // 检查人数是否满足条件
+
             if (IsConfigComplete() && _enableQQBotConfig && _numPlayersInDuty <= _battlePlayerCount)
             {
-                // 发送QQ消息
-                SendMessageToQQ($"当前为{_numPlayersInDuty}人对局");
+
+                SendMessageToQQ($"本账号名称: {_gameName}\n" +
+                                $"当前为{_numPlayersInDuty}人对局");
+            }
+            else
+            {
+                _debugMessages += "判断异常\n";
             }
         }
+
+
+
+
+        if (Regex.IsMatch(message.TextValue, @"获得了(\d+)个金碟声誉。"))
+        {
+            if (_autoFarmingMode && !_autoWinLeave)
+            {
+                PerformAutoFarming();
+            }
+            if (_autoWinLeave && _map is Map3)
+            {
+                PerformAutoFarming();
+            }
+        }
+
     }
 
     public void Dispose()
@@ -142,6 +172,7 @@ public class MainWindow : Window, IDisposable
         ImGui.TextUnformatted($"Num players in duty: {_numPlayersInDuty} (autoleave: {(_autoLeaveAt == DateTime.MaxValue ? "never" : $"in {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
         ImGui.Checkbox("挂机刷币模式(请同时勾选自动排本)", ref _autoFarmingMode);
         ImGui.Checkbox("自动排本(需要在NPC旁边)", ref _autoJoin);
+        ImGui.Checkbox("第三关冠军自动退(请勿勾选挂机刷币)", ref _autoWinLeave);
         if (_autoJoin)
         {
             using (ImRaii.PushIndent())
@@ -161,9 +192,12 @@ public class MainWindow : Window, IDisposable
         ImGui.Checkbox("AOE范围", ref _showAOEs);
         ImGui.Checkbox("AOE时间", ref _showAOEText);
         ImGui.Checkbox("推荐路线", ref _showPathfind);
+        
+        
 
 
-        ImGui.Checkbox("启用QQ机器人配置", ref _enableQQBotConfig);
+
+        ImGui.Checkbox("启用QQ机器人通知", ref _enableQQBotConfig);
 
 
         if (_enableQQBotConfig)
@@ -178,16 +212,24 @@ public class MainWindow : Window, IDisposable
 
             if (ImGui.Button("应用"))
             {
+
+                config.GameName = _gameName;
+                config.QqPrivateChatNumber = _qqPrivateChatNumber;
+                config.QqBotNumber = _qqBotNumber;
+                config.WebSocketUrl = _webSocketUrl;
+                config.WebSocketPort = _webSocketPort;
+                config.BattlePlayerCount = _battlePlayerCount;
+                config.Save();
                 if (IsConfigComplete())
                 {
-                    // 如果配置完整，允许发送QQ消息
+
                     SendMessageToQQ("机器人已成功连接\n" +
                                     $"本账号名称: {_gameName}\n" +
                                     $"通知QQ私聊号码: {_qqPrivateChatNumber}\n");
                 }
                 else
                 {
-                    // 配置不完整，显示错误消息
+
                     _debugMessages += "QQ机器人配置不完整，取消发送消息。\n";
                 }
             }
@@ -265,140 +307,140 @@ public class MainWindow : Window, IDisposable
         }
         catch (HttpRequestException e)
         {
-            _debugMessages += "消息发送失败: " + e.Message+ "\n";
+            _debugMessages += "消息发送失败: " + e.Message + "\n";
         }
         catch (Exception e) // 捕获更广泛的异常
         {
-            _debugMessages += "消息发送出现异常: " + e.Message +"\n";
+            _debugMessages += "消息发送出现异常: " + e.Message + "\n";
         }
     }
 
 
-        private void UpdateMap()
+    private void UpdateMap()
+    {
+        if (Service.Condition[ConditionFlag.BetweenAreas])
+            return;
+
+        Type? mapType = null;
+        if (IsOpen)
         {
-            if (Service.Condition[ConditionFlag.BetweenAreas])
-                return;
-
-            Type? mapType = null;
-            if (IsOpen)
+            if (Service.ClientState.TerritoryType == 1197)
             {
-                if (Service.ClientState.TerritoryType == 1197)
-                {
-                    //mapType = typeof(MapTest);
-                }
-                else
-                {
-                    var pos = Service.ClientState.LocalPlayer!.Position;
-                    mapType = pos switch
-                    {
-                        //{ X: >= -20 and <= 20, Z: >= -400 and <= -100 } => typeof(Map1A),
-                        { X: >= -40 and <= 40, Z: >= 100 and <= 350 } => typeof(Map3),
-                        _ => null
-                    };
-                }
+                //mapType = typeof(MapTest);
             }
-
-            if (_map?.GetType() != mapType)
+            else
             {
-                _map?.Dispose();
-                _map = null;
-                if (mapType != null)
-                    _map = (Map?)Activator.CreateInstance(mapType, _gameEvents);
+                var pos = Service.ClientState.LocalPlayer!.Position;
+                mapType = pos switch
+                {
+                    //{ X: >= -20 and <= 20, Z: >= -400 and <= -100 } => typeof(Map1A),
+                    { X: >= -40 and <= 40, Z: >= 100 and <= 350 } => typeof(Map3),
+                    _ => null
+                };
             }
-
-            _map?.Update();
         }
-        private void PerformAutoFarming()
 
+        if (_map?.GetType() != mapType)
         {
+            _map?.Dispose();
+            _map = null;
+            if (mapType != null)
+                _map = (Map?)Activator.CreateInstance(mapType, _gameEvents);
+        }
 
+        _map?.Update();
+    }
+    private void PerformAutoFarming()
+
+    {
+
+        _automation.LeaveDuty();
+
+    }
+
+    private void UpdateAutoJoin()
+    {
+        bool wantAutoJoin = _autoJoin && _automation.Idle && IsOpen && Service.ClientState.TerritoryType == 1197 && !Service.Condition[ConditionFlag.WaitingForDutyFinder] && !Service.Condition[ConditionFlag.BetweenAreas];
+        if (!wantAutoJoin)
+        {
+            _autoJoinAt = DateTime.MaxValue;
+        }
+        else if (_autoJoinAt == DateTime.MaxValue)
+        {
+            Service.Log.Debug($"Auto-joining in {_autoJoinDelay:f2}s...");
+            _autoJoinAt = _now.AddSeconds(_autoJoinDelay);
+        }
+        else if (_now >= _autoJoinAt)
+        {
+            Service.Log.Debug($"Auto-joining");
+            _automation.RegisterForDuty();
+            _autoJoinAt = DateTime.MaxValue;
+        }
+    }
+
+    private void UpdateAutoLeave()
+    {
+        _numPlayersInDuty = Service.ClientState.TerritoryType == 1165 && Service.Condition[ConditionFlag.BoundByDuty] && !Service.Condition[ConditionFlag.BetweenAreas]
+            ? Service.ObjectTable.Count(o => o.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Player)
+            : 0;
+        bool wantAutoLeave = _autoLeaveIfNotSolo && _numPlayersInDuty > _autoLeaveLimit && _automation.Idle;
+        if (!wantAutoLeave)
+        {
+            _autoLeaveAt = DateTime.MaxValue;
+        }
+        else if (_autoLeaveAt == DateTime.MaxValue)
+        {
+            Service.Log.Debug($"Auto-leaving in {_autoLeaveDelay:f2}s...");
+            _autoLeaveAt = _now.AddSeconds(_autoLeaveDelay);
+        }
+        else if (_now >= _autoLeaveAt)
+        {
+            Service.Log.Debug($"Auto-leaving: {_numPlayersInDuty} players");
             _automation.LeaveDuty();
-
+            _autoLeaveAt = DateTime.MaxValue;
         }
+    }
 
-        private void UpdateAutoJoin()
-        {
-            bool wantAutoJoin = _autoJoin && _automation.Idle && IsOpen && Service.ClientState.TerritoryType == 1197 && !Service.Condition[ConditionFlag.WaitingForDutyFinder] && !Service.Condition[ConditionFlag.BetweenAreas];
-            if (!wantAutoJoin)
-            {
-                _autoJoinAt = DateTime.MaxValue;
-            }
-            else if (_autoJoinAt == DateTime.MaxValue)
-            {
-                Service.Log.Debug($"Auto-joining in {_autoJoinDelay:f2}s...");
-                _autoJoinAt = _now.AddSeconds(_autoJoinDelay);
-            }
-            else if (_now >= _autoJoinAt)
-            {
-                Service.Log.Debug($"Auto-joining");
-                _automation.RegisterForDuty();
-                _autoJoinAt = DateTime.MaxValue;
-            }
-        }
+    private void DrawOverlays()
+    {
+        if (_map == null || Service.Condition[ConditionFlag.BetweenAreas])
+            return;
 
-        private void UpdateAutoLeave()
+        if (_showPathfind)
         {
-            _numPlayersInDuty = Service.ClientState.TerritoryType == 1165 && Service.Condition[ConditionFlag.BoundByDuty] && !Service.Condition[ConditionFlag.BetweenAreas]
-                ? Service.ObjectTable.Count(o => o.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Player)
-                : 0;
-            bool wantAutoLeave = _autoLeaveIfNotSolo && _numPlayersInDuty > _autoLeaveLimit && _automation.Idle;
-            if (!wantAutoLeave)
+            var from = _map.PlayerPos;
+            for (int i = _map.PathSkip; i < _map.Path.Count; ++i)
             {
-                _autoLeaveAt = DateTime.MaxValue;
-            }
-            else if (_autoLeaveAt == DateTime.MaxValue)
-            {
-                Service.Log.Debug($"Auto-leaving in {_autoLeaveDelay:f2}s...");
-                _autoLeaveAt = _now.AddSeconds(_autoLeaveDelay);
-            }
-            else if (_now >= _autoLeaveAt)
-            {
-                Service.Log.Debug($"Auto-leaving: {_numPlayersInDuty} players");
-                _automation.LeaveDuty();
-                _autoLeaveAt = DateTime.MaxValue;
+                var wp = _map.Path[i];
+                var delay = (wp.StartMoveAt - _now).TotalSeconds;
+                _drawer.DrawWorldLine(from, wp.Dest, i > 0 ? 0xff00ffff : delay <= 0 ? 0xff00ff00 : 0xff0000ff);
+                if (delay > 0)
+                    _drawer.DrawWorldText(from, 0xff0000ff, $"{delay:f3}");
+                from = wp.Dest;
             }
         }
 
-        private void DrawOverlays()
+        foreach (var aoe in _map.AOEs.Where(aoe => aoe.NextActivation != default))
         {
-            if (_map == null || Service.Condition[ConditionFlag.BetweenAreas])
-                return;
-
-            if (_showPathfind)
+            var nextActivation = (aoe.NextActivation - _now).TotalSeconds;
+            if (nextActivation < 2.5f)
             {
-                var from = _map.PlayerPos;
-                for (int i = _map.PathSkip; i < _map.Path.Count; ++i)
+                var (aoeEnter, aoeExit) = _movementSpeed > 0 ? aoe.Intersect(_map.PlayerPos, _movementDirection) : aoe.Contains(_map.PlayerPos) ? (0, float.PositiveInfinity) : (float.NaN, float.NaN);
+                var delay = !float.IsNaN(aoeEnter) ? aoe.ActivatesBetween(_now, aoeEnter * Map.InvSpeed - 0.1f, aoeExit * Map.InvSpeed + 0.1f) : 0;
+                var color = delay > 0 ? 0xff0000ff : 0xff00ffff;
+                if (_showAOEs)
                 {
-                    var wp = _map.Path[i];
-                    var delay = (wp.StartMoveAt - _now).TotalSeconds;
-                    _drawer.DrawWorldLine(from, wp.Dest, i > 0 ? 0xff00ffff : delay <= 0 ? 0xff00ff00 : 0xff0000ff);
-                    if (delay > 0)
-                        _drawer.DrawWorldText(from, 0xff0000ff, $"{delay:f3}");
-                    from = wp.Dest;
+                    aoe.Draw(_drawer, color);
                 }
-            }
-
-            foreach (var aoe in _map.AOEs.Where(aoe => aoe.NextActivation != default))
-            {
-                var nextActivation = (aoe.NextActivation - _now).TotalSeconds;
-                if (nextActivation < 2.5f)
+                if (_showAOEText)
                 {
-                    var (aoeEnter, aoeExit) = _movementSpeed > 0 ? aoe.Intersect(_map.PlayerPos, _movementDirection) : aoe.Contains(_map.PlayerPos) ? (0, float.PositiveInfinity) : (float.NaN, float.NaN);
-                    var delay = !float.IsNaN(aoeEnter) ? aoe.ActivatesBetween(_now, aoeEnter * Map.InvSpeed - 0.1f, aoeExit * Map.InvSpeed + 0.1f) : 0;
-                    var color = delay > 0 ? 0xff0000ff : 0xff00ffff;
-                    if (_showAOEs)
-                    {
-                        aoe.Draw(_drawer, color);
-                    }
-                    if (_showAOEText)
-                    {
-                        var text = $"{nextActivation:f3} [{aoeEnter * Map.InvSpeed:f2}-{aoeExit * Map.InvSpeed:f2}, {delay:f2}]";
-                        var dir = (aoe.Origin - _map.PlayerPos).NormalizedXZ();
-                        var (enter, exit) = aoe.Intersect(_map.PlayerPos, dir);
-                        var textPos = _map.PlayerPos + dir * MathF.Max(enter, 0);
-                        _drawer.DrawWorldText(textPos, color, text);
-                    }
+                    var text = $"{nextActivation:f3} [{aoeEnter * Map.InvSpeed:f2}-{aoeExit * Map.InvSpeed:f2}, {delay:f2}]";
+                    var dir = (aoe.Origin - _map.PlayerPos).NormalizedXZ();
+                    var (enter, exit) = aoe.Intersect(_map.PlayerPos, dir);
+                    var textPos = _map.PlayerPos + dir * MathF.Max(enter, 0);
+                    _drawer.DrawWorldText(textPos, color, text);
                 }
             }
         }
     }
+}
