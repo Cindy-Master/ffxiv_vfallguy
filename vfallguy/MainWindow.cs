@@ -14,7 +14,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Dalamud.Plugin;
-
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 
 
 namespace vfallguy;
@@ -53,6 +53,7 @@ public class MainWindow : Window, IDisposable
     private bool _showDebugWindow = false;
     private string _debugMessages = "";
     private BotConfiguration config;
+
 
 
 
@@ -169,10 +170,20 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Button("退本"))
             _automation.LeaveDuty();
         ImGui.SameLine();
+        if (ImGui.Button("查询王之进度"))
+        {
+            var achievement = Achievement.Instance();
+            if (achievement != null)
+            {
+                achievement->RequestAchievementProgress(3407);
+            }
+        }
+        ImGui.SameLine();
+        ImGui.Text($"{Achievement.Instance()->ProgressMax}/100 ");
         ImGui.TextUnformatted($"Num players in duty: {_numPlayersInDuty} (autoleave: {(_autoLeaveAt == DateTime.MaxValue ? "never" : $"in {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
         ImGui.Checkbox("挂机刷币模式(请同时勾选自动排本)", ref _autoFarmingMode);
         ImGui.Checkbox("自动排本(需要在NPC旁边)", ref _autoJoin);
-        ImGui.Checkbox("第三关冠军自动退(请勿勾选挂机刷币)", ref _autoWinLeave);
+        ImGui.Checkbox("第三关结束自动退(请勿勾选挂机刷币)", ref _autoWinLeave);
         if (_autoJoin)
         {
             using (ImRaii.PushIndent())
@@ -192,8 +203,6 @@ public class MainWindow : Window, IDisposable
         ImGui.Checkbox("AOE范围", ref _showAOEs);
         ImGui.Checkbox("AOE时间", ref _showAOEText);
         ImGui.Checkbox("推荐路线", ref _showPathfind);
-        
-        
 
 
 
@@ -300,7 +309,6 @@ public class MainWindow : Window, IDisposable
             }
             else
             {
-                // 添加服务器响应错误的处理逻辑
                 _debugMessages += $"消息发送失败: 服务器返回 {response.StatusCode}\n";
             }
 
@@ -309,7 +317,7 @@ public class MainWindow : Window, IDisposable
         {
             _debugMessages += "消息发送失败: " + e.Message + "\n";
         }
-        catch (Exception e) // 捕获更广泛的异常
+        catch (Exception e)
         {
             _debugMessages += "消息发送出现异常: " + e.Message + "\n";
         }
