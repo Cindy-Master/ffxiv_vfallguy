@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Dalamud.Game.ClientState.Objects;
 
 namespace vfallguy;
 
@@ -41,8 +42,11 @@ public unsafe class AutoJoinLeave : IDisposable
 
             var registrator = Service.ObjectTable.FirstOrDefault(o => o.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventNpc && o.DataId == 0xFF7A8);
             if (registrator == null)
-                return false;
-
+            {
+                Service.Log.Debug("NPC not found.");
+                return false; // 如果NPC没有找到，返回false
+            }
+            Service.TargetManager.Target = registrator;
             TargetSystem.Instance()->InteractWithObject((GameObject*)registrator.Address);
             return true;
         });
@@ -79,10 +83,12 @@ public unsafe class AutoJoinLeave : IDisposable
             return true;
         });
     }
+    
 
     public void LeaveDuty()
     {
-        _actions.Add(() => {
+        _actions.Add(() =>
+        {
             if (!Service.Condition[ConditionFlag.BoundByDuty])
                 return true;
             Service.Log.Debug("leaving...");
@@ -90,7 +96,8 @@ public unsafe class AutoJoinLeave : IDisposable
             return true;
         });
 
-        _actions.Add(() => {
+        _actions.Add(() =>
+        {
             if (!Service.Condition[ConditionFlag.BoundByDuty])
                 return true;
             if (!Service.Condition[ConditionFlag.OccupiedInCutSceneEvent])

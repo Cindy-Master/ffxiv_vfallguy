@@ -1,4 +1,4 @@
-using Dalamud.Game.ClientState.Conditions;
+﻿using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -164,6 +164,14 @@ public class MainWindow : Window, IDisposable
 
     public unsafe override void Draw()
     {
+        /*if (Service.ClientState.LocalPlayer != null)
+        {
+            uint blueColor = 0xFF0000FF;
+            ImGui.PushStyleColor(ImGuiCol.Text, blueColor);
+            ImGui.Text($"玩家名称: {Service.ClientState.LocalPlayer.Name}");
+            ImGui.PopStyleColor();
+        }*/
+
         if (ImGui.Button("进本"))
             _automation.RegisterForDuty();
         ImGui.SameLine();
@@ -180,15 +188,15 @@ public class MainWindow : Window, IDisposable
         }
         ImGui.SameLine();
         ImGui.Text($"{Achievement.Instance()->ProgressMax}/100 ");
-        ImGui.TextUnformatted($"Num players in duty: {_numPlayersInDuty} (autoleave: {(_autoLeaveAt == DateTime.MaxValue ? "never" : $"in {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
+        ImGui.TextUnformatted($"玩家数量: {_numPlayersInDuty} (自动退本: {(_autoLeaveAt == DateTime.MaxValue ? "无" : $"倒计时: {(_autoLeaveAt - _now).TotalSeconds:f1}s")})");
+        ImGui.Checkbox("第三关结束自动退(请勿勾选挂机刷币)", ref _autoWinLeave);
         ImGui.Checkbox("挂机刷币模式(请同时勾选自动排本)", ref _autoFarmingMode);
         ImGui.Checkbox("自动排本(需要在NPC旁边)", ref _autoJoin);
-        ImGui.Checkbox("第三关结束自动退(请勿勾选挂机刷币)", ref _autoWinLeave);
         if (_autoJoin)
         {
             using (ImRaii.PushIndent())
             {
-                ImGui.SliderFloat("Delay###j", ref _autoJoinDelay, 0, 10);
+                ImGui.SliderFloat("延迟###j", ref _autoJoinDelay, 0, 10);
             }
         }
         ImGui.Checkbox("如果非单人自动退本", ref _autoLeaveIfNotSolo);
@@ -196,8 +204,8 @@ public class MainWindow : Window, IDisposable
         {
             using (ImRaii.PushIndent())
             {
-                ImGui.SliderFloat("Delay###l", ref _autoLeaveDelay, 0, 10);
-                ImGui.SliderInt("Limit", ref _autoLeaveLimit, 1, 23);
+                ImGui.SliderFloat("延迟###l", ref _autoLeaveDelay, 0, 10);
+                ImGui.SliderInt("人数限制", ref _autoLeaveLimit, 1, 25);
             }
         }
         ImGui.Checkbox("AOE范围", ref _showAOEs);
