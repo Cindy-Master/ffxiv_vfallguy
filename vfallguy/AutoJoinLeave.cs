@@ -1,4 +1,4 @@
-﻿using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Objects;
+using ClickLib.Clicks;
 
 namespace vfallguy;
 
@@ -48,10 +49,12 @@ public unsafe class AutoJoinLeave : IDisposable
             }
             Service.TargetManager.Target = registrator;
             TargetSystem.Instance()->InteractWithObject((GameObject*)registrator.Address);
+            TargetSystem.Instance()->InteractWithObject((GameObject*)registrator.Address);
+            TargetSystem.Instance()->InteractWithObject((GameObject*)registrator.Address);
             return true;
         });
 
-        _actions.Add(() =>
+       _actions.Add(() =>
         {
             if (Service.Condition[ConditionFlag.BoundByDuty])
                 return true;
@@ -69,21 +72,20 @@ public unsafe class AutoJoinLeave : IDisposable
 
         _actions.Add(() =>
         {
-            if (Service.Condition[ConditionFlag.BoundByDuty])
-                return true;
-
-            var addon = RaptureAtkUnitManager.Instance()->GetAddonByName("ContentsFinderConfirm");
-            if (addon == null || !addon->IsVisible || addon->UldManager.LoadedState != AtkLoadState.Loaded)
-                return false;
-
-            Service.Log.Debug($"commencing...");
-            var eventData = new AtkEvent();
-            var inputData = stackalloc int[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            addon->ReceiveEvent(AtkEventType.ButtonClick, 8, &eventData, (nint)inputData);
+        if (Service.Condition[ConditionFlag.BoundByDuty])
             return true;
+
+        var addon = RaptureAtkUnitManager.Instance()->GetAddonByName("ContentsFinderConfirm");
+        if (addon == null || !addon->IsVisible || addon->UldManager.LoadedState != AtkLoadState.Loaded)
+            return false;
+
+        Service.Log.Debug("commencing...");
+        ClickContentsFinderConfirm.Using((nint)addon).Commence();
+        return true;
         });
+
     }
-    
+
 
     public void LeaveDuty()
     {
