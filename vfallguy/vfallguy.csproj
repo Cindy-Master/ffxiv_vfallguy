@@ -64,5 +64,8 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ClickLib\ClickLib\ClickLib.csproj" />
+  </ItemGroup>
 
 </Project>
