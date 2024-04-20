@@ -1,4 +1,4 @@
-﻿using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -15,6 +15,8 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Dalamud.Plugin;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 
 
 namespace vfallguy;
@@ -397,8 +399,10 @@ public class MainWindow : Window, IDisposable
     private void UpdateAutoLeave()
     {
         _numPlayersInDuty = Service.ClientState.TerritoryType == 1165 && Service.Condition[ConditionFlag.BoundByDuty] && !Service.Condition[ConditionFlag.BetweenAreas]
-            ? Service.ObjectTable.Count(o => o.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Player)
-            : 0;
+     ? Service.ObjectTable.OfType<PlayerCharacter>()
+                  .Count(pc => pc.ObjectId != 3758096384)
+     : 0;
+
         bool wantAutoLeave = _autoLeaveIfNotSolo && _numPlayersInDuty > _autoLeaveLimit && _automation.Idle;
         if (!wantAutoLeave)
         {
